@@ -21,6 +21,12 @@ fn main(){
     .action(ArgAction::SetTrue)
     .help("shows todo not marked as done");
 
+    let index_args = Arg::new("index")
+    .short('i')
+    .long("index")
+    .action(ArgAction::Set)
+    .help("use index of todo instead(starts at index 0)");
+
     let match_result: ArgMatches = Command::new("Todo CLI")
     .about("Quickly summon or add to your personal todo list.")
     .arg(&finish_args)
@@ -36,16 +42,16 @@ fn main(){
         Command::new("done")
         .about("sets a todo to done.")
         .arg(&name_args)
+        .arg(&index_args)
     )
     .subcommand(
         Command::new("clear")
         .about("clears the todo list or a specific todo if name is provided")
         .arg(&name_args)
+        .arg(&index_args)
     )
     .get_matches();
 
-    // dbg!(&match_result);
-    
     match match_result.subcommand_name() {
         Some("add") => {
             // * it should be okay to use unwrap here bec, 'add' is sure in use
@@ -56,6 +62,7 @@ fn main(){
             done_todo(&match_result.subcommand_matches("done").unwrap());
         },
         Some("clear") => {
+            // * it should be okay to use unwrap here bec, 'done' is sure in use
             clear_todo(&match_result.subcommand_matches("clear").unwrap());
         },
         None => {
@@ -147,12 +154,6 @@ fn done_todo(match_result: &ArgMatches) {
     let mut todo_to_update: String = String::from("");
     let mut file_content: String = String::from("");
 
-    if let Some(value) = match_result.get_one::<String>("name") {
-        todo_to_update.push_str(value);
-    } else {
-        println!("unable to update.");
-    }
-
     if let Ok(value) = fs::read_to_string(file_path()) {
         file_content.push_str(value.as_str());
     } else {
@@ -160,6 +161,24 @@ fn done_todo(match_result: &ArgMatches) {
         createdir_fallback();
         done_todo(match_result);
         return ();
+    }
+
+    if let Some(value) = match_result.get_one::<String>("name") {
+        todo_to_update.push_str(value);
+    } else if let Some(value) = match_result.get_one::<String>("index") {
+        if let Ok(parsed_value) = value.parse::<usize>() {
+            let todo_name = file_content.clone()
+            .split("\n")
+            .collect::<Vec<&str>>()
+            .iter()
+            .map(|line| line.split(",").collect::<Vec<&str>>())
+            .enumerate()
+            .filter(|(idx, _cells)| *idx == parsed_value )
+            .fold(String::from(""), |_acc, (_idx, cells): (usize, Vec<&str>)| cells[0].to_string());
+        todo_to_update = todo_name;
+        }
+    } else {
+        println!("unable to update.");
     }
 
     let file_lines: String = file_content
@@ -186,9 +205,33 @@ fn done_todo(match_result: &ArgMatches) {
 fn clear_todo(match_result: &ArgMatches) {
     let mut clear_single = false;
     let mut to_delete:String = String::from("");
+    let mut file_content: String = String::from("");
+
+    if let Ok(value) = fs::read_to_string(file_path()) {
+        file_content.push_str(value.as_str());
+    } else {
+        println!("unable to read file.");
+        createdir_fallback();
+        done_todo(match_result);
+        return ();
+    }
+
     if let Some(name) = match_result.get_one::<String>("name") {
         clear_single = true;
         to_delete.push_str(name);
+    }  else if let Some(value) = match_result.get_one::<String>("index") {
+        if let Ok(parsed_value) = value.parse::<usize>() {
+            let todo_name = file_content.clone()
+            .split("\n")
+            .collect::<Vec<&str>>()
+            .iter()
+            .map(|line| line.split(",").collect::<Vec<&str>>())
+            .enumerate()
+            .filter(|(idx, _cells)| *idx == parsed_value )
+            .fold(String::from(""), |_acc, (_idx, cells): (usize, Vec<&str>)| cells[0].to_string());
+         to_delete = todo_name;
+         clear_single = true;
+        }
     }
 
     if clear_single {
