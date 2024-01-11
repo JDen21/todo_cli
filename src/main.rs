@@ -90,8 +90,11 @@ fn show_todo(match_result: &ArgMatches){
 
     if !match_result.get_flag("on-going") 
     && !match_result.get_flag("finished") {
-        for line in line_arr.into_iter() {
-            println!("{}", line.replace(", ", " - "));
+        for (index, line) in line_arr.into_iter().enumerate() {
+            if line.len() == 0 {
+                continue;
+            }
+            println!("{} -> {}", index, line.replace(", ", " - "));
         }
         return ();
     }
