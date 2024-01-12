@@ -1,57 +1,14 @@
-use clap::{Arg, Command, ArgAction, ArgMatches};
+mod command_parser;
+
+use clap::ArgMatches;
 use home::home_dir;
 use std::fs;
+use  command_parser::get_match_result;
+use chrono::{Local, Datelike};
+
 
 fn main(){
-    let name_args = Arg::new("name")
-    .short('n')
-    .long("name")
-    .action(ArgAction::Set)
-    .help("set the name of todo for the command or subcommand");
-
-    let finish_args = Arg::new("finished")
-    .short('f')
-    .long("finished")
-    .action(ArgAction::SetTrue)
-    .help("shows todo marked as done");
-
-    let ongoing_args = Arg::new("on-going")
-    .short('o')
-    .long("on-going")
-    .action(ArgAction::SetTrue)
-    .help("shows todo not marked as done");
-
-    let index_args = Arg::new("index")
-    .short('i')
-    .long("index")
-    .action(ArgAction::Set)
-    .help("use index of todo instead(starts at index 0)");
-
-    let match_result: ArgMatches = Command::new("Todo CLI")
-    .about("Quickly summon or add to your personal todo list.")
-    .arg(&finish_args)
-    .arg(&ongoing_args) 
-    .subcommand(
-        Command::new("add") 
-        .about("Add to your todo list.")
-        .arg(&name_args)
-        .arg(&finish_args)
-        .arg(&ongoing_args)
-    )
-    .subcommand(
-        Command::new("done")
-        .about("sets a todo to done.")
-        .arg(&name_args)
-        .arg(&index_args)
-    )
-    .subcommand(
-        Command::new("clear")
-        .about("clears the todo list or a specific todo if name is provided")
-        .arg(&name_args)
-        .arg(&index_args)
-    )
-    .get_matches();
-
+    let match_result = get_match_result();
     match match_result.subcommand_name() {
         Some("add") => {
             // * it should be okay to use unwrap here bec, 'add' is sure in use
@@ -94,15 +51,15 @@ fn show_todo(match_result: &ArgMatches){
             if line.len() == 0 {
                 continue;
             }
-            println!("{} -> {}", index, line.replace(", ", " - "));
+            println!("{} -> {}", index, line.replace(",", " - "));
         }
         return ();
     }
 
     if match_result.get_flag("on-going"){
         for line in line_arr.into_iter() {
-            if !line.ends_with("done") {
-                println!("{}", line);   
+            if !line.ends_with("done\n") {
+                println!("{}", line.replace(",", " - "));   
             }
         }
         return ();
@@ -110,8 +67,8 @@ fn show_todo(match_result: &ArgMatches){
 
     if match_result.get_flag("finished") {
         for line in line_arr.into_iter() {
-            if line.ends_with("done") {
-                println!("{}", line.replace(", ", " - "));   
+            if line.ends_with("done\n") {
+                println!("{}", line.replace(",", " - "));   
             }
         }
     }
@@ -134,7 +91,9 @@ fn add_todo(match_result: &ArgMatches) {
         println!("unable to add todo due to  ','");
         return ();
     }
-
+    let current_time = Local::now();
+    let new_todo = new_todo + "," + format!("{}", current_time.format("%m/%d/%Y,")).as_str();
+    let new_todo = new_todo + format!("{}", current_time.date_naive().weekday()).as_str();
     if let Ok(value) = fs::read_to_string(file_path()) {
         file_content.push_str(value.as_str());
     } else {
@@ -189,17 +148,19 @@ fn done_todo(match_result: &ArgMatches) {
     .collect::<Vec<&str>>()
     .iter()
     .map(|line| line.split(",").collect::<Vec<&str>>())
-    .map(|cells: Vec<&str>| {
+    .map(|mut cells: Vec<&str>| {
         if cells[0] == todo_to_update {
-            return vec![cells[0], " done, "].join(",");
+            cells.push("done");
+            // * because Im too lazy to debug
+            return cells.join(",").replace(", ,", ",");
         }
-        return cells.clone().join(",");
+        return cells.join(",");
     })
     .collect::<Vec<String>>()
     .join("\n");
 
     if let Ok(_) = fs::write(file_path(), &file_lines) {
-        println!("{}", file_lines);
+        println!("{}", file_lines.replace(",", " - "));
     } else {
         println!("unable to write file.");
     }
@@ -222,7 +183,9 @@ fn clear_todo(match_result: &ArgMatches) {
     if let Some(name) = match_result.get_one::<String>("name") {
         clear_single = true;
         to_delete.push_str(name);
-    }  else if let Some(value) = match_result.get_one::<String>("index") {
+    } 
+    // * basically getting the index of the todo 
+    else if let Some(value) = match_result.get_one::<String>("index") {
         if let Ok(parsed_value) = value.parse::<usize>() {
             let todo_name = file_content.clone()
             .split("\n")
